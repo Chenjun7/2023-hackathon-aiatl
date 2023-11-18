@@ -10,6 +10,7 @@ app = Flask(__name__)
 
 PROMPT = "Annotate the location of the building with the largest area using the buildings file"
 
+
 client = OpenAI(api_key='OPENAI_API_KEY_HERE')
 assistant = client.beta.assistants.retrieve("ASSISTANT_ID_HERE")
 
@@ -32,17 +33,28 @@ def send_message():
   assistant_id=assistant.id,
   )
 
-
+  i = 0 
   while run.status not in ["completed", "failed", "requires_action"]:
     time.sleep(1)
     run = client.beta.threads.runs.retrieve(
         thread_id=thread.id,
         run_id=run.id
     )
+    i += 1
+    if i == 20:
+      return jsonify({'text_response': "Could not process request", 'annotation_data': None})
     print(run.status)
+  if run.status == "completed":
+    messages = client.beta.threads.messages.list(
+    thread_id=thread.id
+    )
+    print("map did not annottate")
+    print(messages)
+    
   tools_to_call = run.required_action.submit_tool_outputs.tool_calls
   tool_output_array = []
-  map_annotation_data = defaultdict(int)
+  map_annotation_data = defaultdict(list)
+  numCoords = 0 
   for tool_to_call in tools_to_call:
     tool_call_id = tool_to_call.id
     function_name = tool_to_call.function.name
@@ -52,16 +64,24 @@ def send_message():
     print("Parameters to use: " + function_arg)
     # TO DO call the API matching the functionname and return the output
     if function_name == "get_map_coords":
+      numCoords += 1 
       # Parse the JSON string into a Python dictionary
       data = json.loads(function_arg)
       # Extract the string containing the float values
       float_values_str = data['list_of_points']
       # Split the string by comma to separate the float values
-
+      print("bruhhhh")
+      print(type(data['building_names']))
       points_list = ast.literal_eval(float_values_str)
-      if data.get('building_names') is not None:
-        map_annotation_data['building_name'] = data['building_names']
-      map_annotation_data['list_of_points'] = points_list
+      name_list = ast.literal_eval(data['building_names'])
+      print(type(name_list))
+      if numCoords == 1:
+        if data.get('building_names') is not None:
+          map_annotation_data['building_name'] = name_list
+        map_annotation_data['list_of_points'] = points_list
+      else:
+        map_annotation_data['building_name'].append(name_list)
+        map_annotation_data['list_of_points'].append(points_list)
 
       # Convert the string values to float and then to int
       print(points_list[0])
